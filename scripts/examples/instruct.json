@@ -1,0 +1,19 @@
+{
+    "model": "unsloth/Qwen2.5-0.5B-Instruct",
+    "task_id": "4841bc5a-2ee7-46a2-9753-3bea798eabd3",
+    "hours_to_complete": 5,
+    "expected_repo_name": "7d696e6b-f1e4-4377-977f-b54c1b6a3afb",
+    "dataset": "https://gradients.s3.eu-north-1.amazonaws.com/858ef3969575afc3_train_data.json?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVVZOOA7SA4UOFLPI%2F20250714%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20250714T223710Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=4cf53b521f243d99ba0dc84e7c60f2dbe5651e79668624b68b702e1341716e89",
+    "dataset_type": {
+      "system_prompt": "",
+      "system_format": "{system}",
+      "field_system": null,
+      "field_instruction": "instruct",
+      "field_input": null,
+      "field_output": "output",
+      "format": null,
+      "no_input_format": null,
+      "field": null
+    },
+    "file_format": "s3"
+  }
