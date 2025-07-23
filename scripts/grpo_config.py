@@ -89,7 +89,7 @@ def get_instruct_config(param_nums: int) -> dict:
     else:
         print(f"Model size {param_nums} is not supported")
         return {
-            "lr": 4e-5,
+            "lr": 8e-5,
             "distributed": "ds",
             "gpu_count": 8,
             "batch_size": 6,
