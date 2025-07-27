@@ -1,15 +1,22 @@
 DPO = "dpo"
 GRPO = "grpo"
 INSTRUCT = "instruct"
+CHAT = "chat"
 import re 
 from huggingface_hub import HfApi
 from transformers import AutoConfig
 from instruct_config import MODEL_CONFIG, modify_config
 from dpo_config import modify_config as modify_dpo_config
 from grpo_config import modify_config as modify_grpo_config
+import torch
 
 hf_api = HfApi()
 
+def get_available_gpu_count():
+    if torch.cuda.is_available():
+        return torch.cuda.device_count()
+    else:
+        return 0
 
 def get_model_architecture(model_name: str) -> str:
     try:
@@ -42,18 +49,20 @@ def get_model_num_params(model_id: str, model_path: str) -> int:
     if model_id in MODEL_CONFIG:
         return MODEL_CONFIG[model_id]["model_size"]
     try:
-        model_info = hf_api.model_info(model_path)
+        model_info = hf_api.model_info(model_id)
         size = model_info.safetensors.total
         return size
     except Exception as e:
         print(f"Error getting model size from safetensors: {e}")
         try:
-            model_size = re.search(r"(\d+)(?=[bB])", model_id)
-            model_size = (
-                int(model_size.group(1)) * 1_000_000_000 if model_size else None
-            )
-            print(f"Model size from regex: {model_size}")
-            return model_size
+            m = re.search(r'(?i)(\d+(?:\.\d+)?)\s*([mMbB])\b', model_id)
+            number, unit =float(m.group(1)), m.group(2).lower()
+            print(f"Model size from regex: {number} {unit}")
+            if unit.lower() == 'm':
+                return int(number * 1_000_000)
+            if unit.lower() == 'b':
+                return int(number * 1_000_000_000)
+            return None
         except Exception as e:
             print(f"Error getting model size from regex: {e}")
             return None
@@ -90,13 +99,14 @@ def get_gradient_checkpointing(model: str) -> str:
     return "True"
     
 
-def customize_config(config: dict, task_type: str, model_path: str, model_name: str, hours_to_complete: float):
+def customize_config(config: dict, task_type: str, model_path: str, model_name: str):
     model_architecture = get_model_architecture(model_path)
     param_nums = get_model_num_params(model_name, model_path)
-    
+    gpu_count = get_available_gpu_count()
+
     if task_type == INSTRUCT:
-        modify_config(config, model_name, model_architecture, param_nums)
+        modify_config(config, model_name, model_architecture, param_nums, gpu_count)
     elif task_type == DPO:
-        modify_dpo_config(config, model_name, model_architecture, param_nums)
+        modify_dpo_config(config, model_name, model_architecture, param_nums, gpu_count)
     elif task_type == GRPO:
-        modify_grpo_config(config, model_name, model_architecture, param_nums)
+        modify_grpo_config(config, model_name, model_architecture, param_nums, gpu_count)

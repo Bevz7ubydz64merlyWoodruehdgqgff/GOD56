@@ -107,7 +107,7 @@ def get_instruct_config(param_nums: int) -> dict:
         }
 
 
-def modify_config(axolotl_config: dict, model_name: str, model_architecture: str, param_nums: int) -> dict:
+def modify_config(axolotl_config: dict, model_name: str, model_architecture: str, param_nums: int, gpu_count: int) -> dict:
     config = get_instruct_config(param_nums)
     print(f"INSTRUCT CONFIG: {config}")
     axolotl_config["learning_rate"] = config["lr"]
@@ -119,7 +119,7 @@ def modify_config(axolotl_config: dict, model_name: str, model_architecture: str
         axolotl_config["lora_dropout"] = 0.1
         axolotl_config["lora_target_linear"] = True
     
-    if config.get("distributed", "ddp") == "ds":
-        axolotl_config["deepspeed"] = "/workspace/axolotl/scripts/yml_config/zero3.json"
+    if gpu_count > 1:
+        axolotl_config["deepspeed"] = "/workspace/axolotl/zero2.json"
         
         
