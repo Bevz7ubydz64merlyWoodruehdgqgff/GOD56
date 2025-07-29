@@ -34,13 +34,13 @@ from validator.db.sql.tournaments import count_completed_tournament_entries
 from validator.db.sql.tournaments import create_tournament
 from validator.db.sql.tournaments import eliminate_tournament_participants
 from validator.db.sql.tournaments import get_active_tournament
-from validator.db.sql.tournaments import get_latest_completed_tournament
 from validator.db.sql.tournaments import get_latest_tournament_with_created_at
 from validator.db.sql.tournaments import get_participants_with_insufficient_stake
 from validator.db.sql.tournaments import get_tournament
 from validator.db.sql.tournaments import get_tournament_group_members
 from validator.db.sql.tournaments import get_tournament_groups
 from validator.db.sql.tournaments import get_tournament_pairs
+from validator.db.sql.tournaments import get_tournament_participant
 from validator.db.sql.tournaments import get_tournament_participants
 from validator.db.sql.tournaments import get_tournament_rounds
 from validator.db.sql.tournaments import get_tournament_rounds_with_status
@@ -50,6 +50,7 @@ from validator.db.sql.tournaments import insert_tournament_groups_with_members
 from validator.db.sql.tournaments import insert_tournament_pairs
 from validator.db.sql.tournaments import insert_tournament_round
 from validator.db.sql.tournaments import update_round_status
+from validator.db.sql.tournaments import update_tournament_participant_backup_repo
 from validator.db.sql.tournaments import update_tournament_participant_training_repo
 from validator.db.sql.tournaments import update_tournament_status
 from validator.db.sql.tournaments import update_tournament_winner_hotkey
@@ -58,6 +59,7 @@ from validator.tournament.boss_round_sync import _copy_task_to_general
 from validator.tournament.boss_round_sync import get_synced_task_id
 from validator.tournament.boss_round_sync import get_synced_task_ids
 from validator.tournament.boss_round_sync import sync_boss_round_tasks_to_general
+from validator.tournament.repo_uploader import upload_tournament_participant_repository
 from validator.tournament.task_creator import create_image_tournament_tasks
 from validator.tournament.task_creator import create_text_tournament_tasks
 from validator.tournament.utils import get_base_contestant
@@ -180,7 +182,7 @@ async def assign_nodes_to_tournament_tasks(tournament_id: str, round_id: str, ro
 
         for i, pair in enumerate(round_structure.pairs):
             pair_id = f"{round_id}_pair_{i + 1:03d}"
-            logger.info(f"Processing pair {i+1}/{len(round_structure.pairs)}: {pair} -> {pair_id}")
+            logger.info(f"Processing pair {i + 1}/{len(round_structure.pairs)}: {pair} -> {pair_id}")
 
             pair_tasks = [task for task in round_tasks if task.pair_id == pair_id]
             logger.info(f"Found {len(pair_tasks)} tasks for pair {pair_id}")
@@ -234,7 +236,9 @@ async def create_next_round(
                 winner_nodes.append(node)
                 logger.info(f"Found node for winner {hotkey}")
             else:
-                logger.warning(f"CRITICAL: Could not find node for winner {hotkey} - this winner will be excluded from next round!")
+                logger.warning(
+                    f"CRITICAL: Could not find node for winner {hotkey} - this winner will be excluded from next round!"
+                )
 
         if not winner_nodes:
             logger.error("No winner nodes found, cannot create next round")
@@ -307,15 +311,17 @@ async def advance_tournament(tournament: TournamentData, completed_round: Tourna
             await update_tournament_winner_hotkey(tournament.tournament_id, winner, psql_db)
             await update_tournament_status(tournament.tournament_id, TournamentStatus.COMPLETED, psql_db)
             logger.info(f"Tournament {tournament.tournament_id} completed with winner: {winner}.")
+
+            await upload_participant_repository(tournament.tournament_id, tournament.tournament_type, winner, 1, config, psql_db)
             return
 
         if len(winners) == 1 and completed_round.is_final_round:
+            winner = winners[0]
             round_tasks = await get_tournament_tasks(completed_round.round_id, psql_db)
-            task_ids = [task.task_id for task in round_tasks]
-            snyced_task_ids = await get_synced_task_ids(task_ids, psql_db)
+            snyced_task_ids = await get_synced_task_ids([task.task_id for task in round_tasks], psql_db)
             if len(snyced_task_ids) == 0:
                 await sync_boss_round_tasks_to_general(tournament.tournament_id, completed_round, psql_db, config)
-            elif len(snyced_task_ids) == len(task_ids):
+            elif len(snyced_task_ids) >= len(round_tasks):
                 for synced_task_id in snyced_task_ids:
                     task = await task_sql.get_task(synced_task_id, psql_db)
                     if task.status == TaskStatus.SUCCESS or task.status == TaskStatus.FAILURE:
@@ -323,15 +329,29 @@ async def advance_tournament(tournament: TournamentData, completed_round: Tourna
                     else:
                         logger.info(f"Tournament not completed yet. Synced task {synced_task_id} has status: {task.status}.")
                         return
-                winner = winners[0]
                 await update_tournament_winner_hotkey(tournament.tournament_id, winner, psql_db)
                 await update_tournament_status(tournament.tournament_id, TournamentStatus.COMPLETED, psql_db)
                 logger.info(f"Tournament {tournament.tournament_id} completed with winner: {winner}.")
+
+                try:
+                    participant1, participant2 = await get_final_round_participants(completed_round, psql_db)
+                    runner_up = participant2 if participant1 == winner else participant1
+
+                    await upload_participant_repository(
+                        tournament.tournament_id, tournament.tournament_type, winner, 1, config, psql_db
+                    )
+                    if runner_up:
+                        await upload_participant_repository(
+                            tournament.tournament_id, tournament.tournament_type, runner_up, 2, config, psql_db
+                        )
+                except Exception as e:
+                    logger.error(f"Error determining final round participants: {e}")
+                    await upload_participant_repository(
+                        tournament.tournament_id, tournament.tournament_type, winner, 1, config, psql_db
+                    )
                 return
             else:
-                logger.info(
-                    f"Tournament not completed yet. Synced {len(snyced_task_ids)} tasks out of {len(task_ids)}."
-                )
+                logger.info(f"Tournament not completed yet. Synced {len(snyced_task_ids)} tasks out of {len(round_tasks)}.")
         else:
             await create_next_round(tournament, completed_round, winners, config, psql_db)
 
@@ -690,7 +710,7 @@ async def check_if_round_is_completed(round_data: TournamentRoundData, config: C
         if round_data.is_final_round:
             task_ids = [task.task_id for task in round_tasks]
             synced_task_ids = await get_synced_task_ids(task_ids, config.psql_db)
-            
+
             if synced_task_ids:
                 logger.info(f"Final round has {len(synced_task_ids)} synced tasks, checking their status...")
                 for synced_task_id in synced_task_ids:
@@ -702,13 +722,13 @@ async def check_if_round_is_completed(round_data: TournamentRoundData, config: C
                             break
                         else:
                             logger.info(f"Synced task {synced_task_id} completed with status: {synced_task_obj.status}")
-                
+
                 if not waiting_for_synced_tasks:
                     logger.info(f"All synced tasks for final round {round_data.round_id} are completed")
                 else:
                     logger.info(f"Final round {round_data.round_id} waiting for synced tasks to complete")
                     return False
-        
+
         # Check for failed tasks that need syncing (for all rounds)
         for task in round_tasks:
             synced_task_id = await get_synced_task_id(task.task_id, config.psql_db)
@@ -760,13 +780,13 @@ async def process_tournament_scheduling(config: Config):
     Checks both text and image tournaments independently.
     """
     logger.info("Processing tournament scheduling...")
-    
+
     while True:
         try:
             # Check both tournament types
             for tournament_type in [TournamentType.TEXT, TournamentType.IMAGE]:
                 await check_and_start_tournament(tournament_type, config.psql_db, config)
-                        
+
         except Exception as e:
             logger.error(f"Error processing tournament scheduling: {e}")
         finally:
@@ -783,21 +803,23 @@ async def check_and_start_tournament(tournament_type: TournamentType, psql_db: P
         if active_tournament:
             logger.info(f"Active {tournament_type.value} tournament exists: {active_tournament.tournament_id}")
             return
-        
+
         # Check if there's a pending tournament of this type
         pending_tournaments = await get_tournaments_with_status(TournamentStatus.PENDING, psql_db)
         pending_of_type = [t for t in pending_tournaments if t.tournament_type == tournament_type]
         if pending_of_type:
             logger.info(f"Pending {tournament_type.value} tournament exists: {pending_of_type[0].tournament_id}")
             return
-        
+
         # Get the latest completed tournament and check if enough time has passed
         latest_tournament, created_at = await get_latest_tournament_with_created_at(psql_db, tournament_type)
-        
+
         if latest_tournament and latest_tournament.status == TournamentStatus.COMPLETED:
             if await should_start_new_tournament_after_interval(created_at):
-                logger.info(f"Starting new {tournament_type.value} tournament after {cst.TOURNAMENT_INTERVAL_HOURS} hours since {latest_tournament.tournament_id}")
-                
+                logger.info(
+                    f"Starting new {tournament_type.value} tournament after {cst.TOURNAMENT_INTERVAL_HOURS} hours since {latest_tournament.tournament_id}"
+                )
+
                 # Create new tournament of the same type
                 new_tournament_id = await create_basic_tournament(tournament_type, psql_db, config)
                 logger.info(f"Created new {tournament_type.value} tournament: {new_tournament_id}")
@@ -816,17 +838,58 @@ async def should_start_new_tournament_after_interval(last_created_at) -> bool:
     """
     if not last_created_at:
         return True
-    
+
     now = datetime.now(timezone.utc)
-    
-    # Ensure both timestamps are timezone-aware
+
     if last_created_at.tzinfo is None:
         last_created_at = last_created_at.replace(tzinfo=timezone.utc)
-    
+
     time_diff = now - last_created_at
     hours_passed = time_diff.total_seconds() / 3600
-    
+
     logger.info(f"Hours since last tournament: {hours_passed:.2f}, required: {cst.TOURNAMENT_INTERVAL_HOURS}")
-    
+
     return hours_passed >= cst.TOURNAMENT_INTERVAL_HOURS
 
+
+async def get_final_round_participants(completed_round: TournamentRoundData, psql_db: PSQLDB) -> tuple[str, str]:
+    if completed_round.round_type == RoundType.KNOCKOUT:
+        pairs = await get_tournament_pairs(completed_round.round_id, psql_db)
+        if not pairs:
+            raise ValueError(f"No pairs found for final round {completed_round.round_id}")
+
+        pair = pairs[0]
+
+        return pair.hotkey1, pair.hotkey2
+    else:
+        raise ValueError(f"Expected a knockout round, got {completed_round.round_type}")
+
+
+async def upload_participant_repository(
+    tournament_id: str, tournament_type: str, hotkey: str, position: int, config: Config, psql_db: PSQLDB
+):
+    logger.info(f"Uploading repository for tournament participant: {hotkey} (position: {position})")
+
+    participant = await get_tournament_participant(tournament_id, hotkey, psql_db)
+
+    if not participant or not participant.training_repo:
+        logger.warning(f"No training repository found for participant {hotkey}")
+        return None
+
+    backup_repo_url = await upload_tournament_participant_repository(
+        tournament_id=tournament_id,
+        tournament_type=tournament_type,
+        participant_hotkey=hotkey,
+        training_repo=participant.training_repo,
+        commit_hash=participant.training_commit_hash or "",
+        config=config,
+        position=position,
+    )
+
+    if backup_repo_url:
+        await update_tournament_participant_backup_repo(tournament_id, hotkey, backup_repo_url, psql_db)
+        logger.info(f"Successfully stored backup repository URL for {hotkey}: {backup_repo_url}")
+    else:
+        logger.warning(f"Repository upload failed for participant {hotkey}")
+
+    return backup_repo_url

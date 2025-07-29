@@ -23,7 +23,7 @@ Where `task_type` can be:
 
 ## Docker-Based Architecture
 
-### Supported Base Images
+### Recommended Base Images
 
 **For Text Tasks (Instruct, DPO, GRPO, Chat):**
 ```dockerfile
@@ -114,7 +114,7 @@ patch_wandb_symlinks(train_cst.WANDB_LOGS_DIR)
 
 ### Text Datasets
 - Always provided as S3 URLs
-- Common formats: JSON, CSV, Parquet
+- Format: JSON
 - Dataset type parameter describes the structure (columns, format)
 
 ### Image Datasets
@@ -150,15 +150,34 @@ model_path = f"/cache/models/{model.replace('/', '--')}"
 
 ### Image Dataset Path
 ```python
-# Models are pre-downloaded to this location by the downloader container
-model_path = f"/cache/datasets/{task_id}.zip"
+# Datasets are pre-downloaded to this location by the downloader container
+model_path = f"/cache/datasets/{task_id}_tourn.zip"
 ```
 
 ### Text Dataset Path
 ```python
-# Models are pre-downloaded to this location by the downloader container
+# Datasets are pre-downloaded to this location by the downloader container
 model_path = f"/cache/datasets/{task_id}_train_data.json"
 ```
+
+## Utility Functions in Trainer Scripts
+
+### Image Trainer
+```python
+def get_model_path(path: str) -> str
+```
+Is used to get the folder/file path for image models. The image models can either be a safetensors file, or a diffusers format folder. The function resolves the path to either of those.
+
+### Text Trainer
+```python
+def patch_wandb_symlinks(base_dir:str)
+```
+Fixes the local wandb logs that are later synced to cloud. Offline saves are prone to broken files and symlinks, causing issues while syncing. This function patches those files, which has to be done in the training context.
+
+```python
+def patch_model_metadata(output_dir: str, base_model_id: str)
+```
+Huggingface verifies the base model id when a finetune is uploaded. That gets broken at times due to the nature of our training with localized paths and separate uploads. This function patches the model metadata to deal with that, fixes the model name back to the original huggingface link.
 
 ## Example Entrypoint Script
 
