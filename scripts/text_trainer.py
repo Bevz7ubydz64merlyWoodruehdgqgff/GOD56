@@ -35,7 +35,7 @@ from core.models.utility_models import InstructTextDatasetType
 from core.models.utility_models import TaskType
 from miner.logic.job_handler import create_reward_funcs_file
 
-from customized_config import customize_config, INSTRUCT, DPO, GRPO
+from customized_config import customize_config, INSTRUCT, DPO, GRPO, get_available_gpu_count
 from customized_trainer import WhenToEvalHandler, CustomEvalSaveCallback, GRPOCustomEvalSaveCallback
 import torch.distributed as dist
 from transformers.trainer_utils import is_main_process
@@ -45,11 +45,13 @@ from datetime import datetime, timezone, timedelta
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", "0"))
 
 def setup_distributed():
-    if not dist.is_initialized():
-        dist.init_process_group(
-            backend="nccl",
-            init_method="env://"
-        )
+    if get_available_gpu_count() > 1:
+        if not dist.is_initialized():
+            dist.init_process_group(
+                backend="nccl",
+                init_method="env://"
+            )
+            dist.barrier()
 
 
 def patch_wandb_symlinks(base_dir:str):
@@ -248,7 +250,6 @@ async def main():
 
 
     setup_distributed()
-    dist.barrier()
 
     original_init = Trainer.__init__
     # set the value of end_time = current time in UTC + hours_to_complete
