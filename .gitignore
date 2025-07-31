@@ -1,83 +1,19 @@
-*.egg-info
 # Byte-compiled / optimized / DLL files
-__pycache__
+*.pyc
+__pycache__/
+scripts/last_run_prepared
+scripts/datasets
+scripts/test.py
+scripts/mlruns
+scripts/outputs
+scripts/wandb
+scripts/yml_config
 *.py[cod]
 *$py.class
-sam_vit_l_0b3195.pth
-*.ipynb
+
 # C extensions
 *.so
-*.gguf
-*.session.sql
-nohup.out
-task_history.json
 
-tvenv/*
-axolotl/*
-axolotl
-postgres_data/*
-postgres_data
-
-postgres_data*
-postgres_data/*
-
-todo.md
-core/custom_task_config.py
-
-core/config/*.yml
-core/config/rewards_*.py
-!core/config/base.yml
-!core/config/base_grpo.yml
-core/config/*.toml
-!core/config/base_diffusion_sdxl.toml
-!core/config/base_diffusion_flux.toml
-core/dataset/images/*
-!core/dataset/images/.gitkeep
-
-
-*_keys.encrypted
-container_logs.txt
-.bittensor
-fiber
-*.safetensors
-*.bin
-docker-compose.combined.yml
-nodes.json
-
-.DS_Store
-embeddings_for_testing.txt
-
-hotkey_scores.json
-tmp/*
-dbmate
-vision_database
-miner_autoupdate.log
-valiator_autoupdate.log
-.*.env
-.*.task_config.json
-.*.task_concurrency_config.json
-task_config.json
-task_concurrency_config.json
-
-schema.sql
-tmp/*
-*.pth
-*.pth.lock
-sample.txt
-sample2.txt
-config.yaml
-
-test_images/
-ComfyUI/
-cache/
-~/
-
-score_records.csv
-models_cache/*
-cache/*
-
-image_cache/*
-.ruff_cache
 # Distribution / packaging
 .Python
 build/
@@ -98,8 +34,6 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-*.db
-vision/image_cache
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -149,7 +83,7 @@ docs/_build/
 .pybuilder/
 target/
 
-# Jupyter NB
+# Jupyter Notebook
 .ipynb_checkpoints
 
 # IPython
@@ -226,9 +160,72 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-.idea/
+# PyCharm
+#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
+#  be added to the global gitignore or merged into this project gitignore.  For a PyCharm
+#  project, it is recommended to include the following files:
+#  .idea/
+#  *.iml
+#  *.ipr
+#  *.iws
 
-# HTTPie
-.http
+# VS Code
+.vscode/
 
-**/.claude/settings.local.json
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Model files and checkpoints
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+checkpoints/
+
+# Data files
+*.parquet
+*.h5
+*.hdf5
+
+# Configuration files with sensitive data
+config.ini
+secrets.json
+.env.local
+.env.production
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# ML/AI specific
+wandb/
+mlruns/
+tensorboard_logs/
+scripts/examples/
+scripts/run_py
+scripts/models
+scripts/test_data
+examples/
+scripts/run*.sh
+run_docker.sh
